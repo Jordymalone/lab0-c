@@ -27,7 +27,7 @@ void q_free(struct list_head *head)
     }
     element_t *node = NULL;
     element_t *safe = NULL;
-    list_for_each_entry_safe (node, safe, head, list) {
+    list_for_each_entry_safe(node, safe, head, list) {
         q_release_element(node);
     }
     free(head);
@@ -110,7 +110,7 @@ int q_size(struct list_head *head)
 {
     int length = 0;
     struct list_head *current;
-    list_for_each (current, head) {
+    list_for_each(current, head) {
         length++;
     }
     return length;
