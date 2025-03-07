@@ -296,10 +296,75 @@ int q_descend(struct list_head *head)
     return q_size(head);
 }
 
+/* Helper function for q_merge focus on merge queue*/
+static void merge_two_sorted_queues(struct list_head *l1,
+                                    struct list_head *l2,
+                                    bool descend)
+{
+    if (list_empty(l1) && list_empty(l2)) {
+        return;
+    }
+    if (list_empty(l1)) {
+        list_splice_init(l2, l1);
+        return;
+    }
+    if (list_empty(l2)) {
+        return;
+    }
+    // create a temp node to store combine result
+    LIST_HEAD(result);
+    while (!list_empty(l1) && !list_empty(l2)) {
+        element_t *l1_e = list_first_entry(l1, element_t, list);
+        element_t *l2_e = list_first_entry(l2, element_t, list);
+        // pick big
+        if (descend) {
+            if (strcmp(l1_e->value, l2_e->value) > 0) {
+                list_move_tail(&l1_e->list, &result);
+            } else {
+                list_move_tail(&l2_e->list, &result);
+            }
+        } else {
+            if (strcmp(l1_e->value, l2_e->value) > 0) {
+                list_move_tail(&l2_e->list, &result);
+            } else {
+                list_move_tail(&l1_e->list, &result);
+            }
+        }
+    }
+    // if there is leftover elements, combine into result
+    if (!list_empty(l1)) {
+        list_splice_tail_init(l1, &result);
+    } else if (!list_empty(l2)) {
+        list_splice_tail_init(l2, &result);
+    }
+    list_splice_tail_init(&result, l1);
+}
+
+
 /* Merge all the queues into one sorted queue, which is in ascending/descending
  * order */
 int q_merge(struct list_head *head, bool descend)
 {
     // https://leetcode.com/problems/merge-k-sorted-lists/
-    return 0;
+    if (!head || list_empty(head)) {
+        return 0;
+    }
+    if (list_is_singular(head)) {
+        return q_size(list_entry(head, queue_contex_t, chain)->q);
+    }
+    // use pointer point at the first queue_context_t
+    queue_contex_t *first = list_first_entry(head, queue_contex_t, chain);
+    // record total size during merge the queues
+    int total_size = q_size(first->q);
+    struct list_head *node = first->chain.next;
+    while (node != head) {
+        queue_contex_t *tmp = list_entry(node, queue_contex_t, chain);
+        node = node->next;
+        int count = q_size(tmp->q);
+        if (count > 0) {
+            merge_two_sorted_queues(first->q, tmp->q, descend);
+            total_size += count;
+        }
+    }
+    return total_size;
 }
