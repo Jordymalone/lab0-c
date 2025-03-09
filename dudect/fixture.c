@@ -42,6 +42,7 @@
 
 #define ENOUGH_MEASURE 10000
 #define TEST_TRIES 10
+#define DUDECT_NUMBER_PERCENTILES 100
 
 static t_context_t *t;
 
@@ -64,16 +65,73 @@ static void differentiate(int64_t *exec_times,
         exec_times[i] = after_ticks[i] - before_ticks[i];
 }
 
+/* sort int64_t in qsort */
+static int cmp(const void *a, const void *b)
+{
+    int64_t va = *(const int64_t *) a;
+    int64_t vb = *(const int64_t *) b;
+    if (va < vb)
+        return -1;
+    if (va > vb)
+        return 1;
+    return 0;
+}
+
+static int64_t percentile(int64_t *a_sorted, double which, size_t size)
+{
+    size_t array_position = (size_t) ((double) size * (double) which);
+    assert(array_position < size);
+    return a_sorted[array_position];
+}
+
+// follow the dudect source code to discard the first 10 data
+static const size_t discard_front = 10;
+static double cropping[N_MEASURES];
+
+static void prepare_percentiles(int64_t *exec_times)
+{
+    /* Sort N_MEASURES data in ascending order */
+    qsort(exec_times, N_MEASURES, sizeof(int64_t), cmp);
+
+    /* Compute DUDECT_NUMBER_PERCENTILES thresholds
+     * Each threshold is an exponential-based percentile
+     */
+    for (size_t i = 0; i < DUDECT_NUMBER_PERCENTILES; i++) {
+        double p = 1.0 - pow(0.5, 10.0 * (double) (i + 1) /
+                                      (double) DUDECT_NUMBER_PERCENTILES);
+        int64_t val = percentile(exec_times, p, N_MEASURES);
+        cropping[i] = (double) val;
+    }
+}
+
 static void update_statistics(const int64_t *exec_times, uint8_t *classes)
 {
-    for (size_t i = 0; i < N_MEASURES; i++) {
+    // Discard the first 10 measurements and the very last one.
+    for (size_t i = discard_front; i < (N_MEASURES - 1); i++) {
         int64_t difference = exec_times[i];
         /* CPU cycle counter overflowed or dropped measurement */
-        if (difference <= 0)
+        /* skip overflowed or invalid readings */
+        if (difference < 0)
             continue;
 
         /* do a t-test on the execution time */
         t_push(t, difference, classes[i]);
+
+        /* For each threshold, if difference < threshold, push again */
+        for (size_t k = 0; k < DUDECT_NUMBER_PERCENTILES; k++) {
+            if (cropping[k] == 0)
+                break;
+            if ((double) difference < cropping[k]) {
+                t_push(t, difference, classes[i]);
+            }
+        }
+
+        /* second order test (centered product) */
+        if (t->n[classes[i]] > 10000) {
+            double centered = (double) difference - t->mean[classes[i]];
+            double second_order_val = centered * centered;
+            t_push(t, second_order_val, classes[i]);
+        }
     }
 }
 
@@ -133,6 +191,8 @@ static bool doit(int mode)
 
     bool ret = measure(before_ticks, after_ticks, input_data, mode);
     differentiate(exec_times, before_ticks, after_ticks);
+    // Sorts exec_times and sets thresholds
+    prepare_percentiles(exec_times);
     update_statistics(exec_times, classes);
     ret &= report();
 
