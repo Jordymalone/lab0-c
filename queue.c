@@ -419,3 +419,22 @@ int q_merge(struct list_head *head, bool descend)
     }
     return total_size;
 }
+
+/* Randomly shuffles elements in a queue */
+void q_shuffle(struct list_head *head)
+{
+    if (!head || list_empty(head) || list_is_singular(head)) {
+        return;
+    }
+    int len = q_size(head);
+    while (len > 0) {
+        int rand_value = rand() % len;
+        struct list_head *old = head->next;
+        for (int i = 0; i < rand_value; i++) {
+            old = old->next;
+        }
+        list_del(old);
+        list_add_tail(old, head);
+        len--;
+    }
+}
